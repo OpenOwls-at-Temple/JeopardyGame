@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { generateId } from '../lib/storage'
 import { deriveCategories } from '../lib/board'
 import Modal from '../components/Modal'
+import AIGenerateModal from '../components/AIGenerateModal'
 import type { Question } from '../types'
 
 type Draft = Omit<Question, 'id'> & { id?: string }
@@ -26,6 +27,7 @@ export default function BankEditorPage() {
   const [metaDesc, setMetaDesc] = useState(bank?.description ?? '')
 
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [showAI, setShowAI] = useState(false)
 
   const categories = useMemo(
     () => (bank ? deriveCategories(bank.questions) : []),
@@ -105,6 +107,9 @@ export default function BankEditorPage() {
             }}
           >
             Edit Details
+          </button>
+          <button className="btn secondary" onClick={() => setShowAI(true)}>
+            ✨ Generate with AI
           </button>
           <button className="btn" onClick={() => setDraft(emptyDraft(categories[0] ?? ''))}>
             + Add Question
@@ -197,6 +202,15 @@ export default function BankEditorPage() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* AI question generation */}
+      {showAI && (
+        <AIGenerateModal
+          existingCategories={categories}
+          onAdd={(questions) => updateBank({ ...bank, questions: [...bank.questions, ...questions] })}
+          onClose={() => setShowAI(false)}
+        />
       )}
 
       {/* Add / edit question */}

@@ -9,6 +9,7 @@ export interface GenerateOptions {
   pointValues: number[]
   apiKey: string
   difficulty: Difficulty
+  slideContext?: string  // extracted text from an uploaded PPTX/PDF
 }
 
 const SYSTEM_PROMPT = `You are a Jeopardy question writer for classroom review games.
@@ -38,7 +39,7 @@ const DIFFICULTY_INSTRUCTIONS: Record<Difficulty, string> = {
 }
 
 function buildUserPrompt(opts: GenerateOptions, format: 'array' | 'ndjson'): string {
-  const { topic, categories, pointValues, difficulty } = opts
+  const { topic, categories, pointValues, difficulty, slideContext } = opts
 
   const outputInstruction = format === 'ndjson'
     ? `Output each question as a separate JSON object on its own line (NDJSON).
@@ -66,7 +67,14 @@ Rules:
 - Create one question per (category × point value) combination.
 - The "question" field is the clue players see (not phrased as a question).
 - The "answer" field is the expected answer.
-- Stay on the topic: "${topic}".`
+- Stay on the topic: "${topic}".${slideContext ? `
+
+The following is the source material from uploaded lecture slides.
+Only generate questions about content that appears in this material.
+Use specific facts, terms, and concepts from the slides rather than general knowledge.
+---
+${slideContext.slice(0, 80000)}
+---` : ''}`
 }
 
 function shapeQuestion(raw: { category?: unknown; question?: unknown; answer?: unknown; points?: unknown }): Question {

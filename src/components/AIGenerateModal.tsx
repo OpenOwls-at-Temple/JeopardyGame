@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Modal from './Modal'
 import { generateQuestionsStream, type Difficulty } from '../lib/aiGenerate'
+import { parseSlideFile, fileNameToTopic, type ParseResult } from '../lib/slideParser'
 import type { Question } from '../types'
 
 const API_KEY_STORAGE = 'owl_jeopardy.anthropic_key'
@@ -20,6 +21,12 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
   const [pointsRaw, setPointsRaw] = useState(DEFAULT_POINTS.join(', '))
   const [difficulty, setDifficulty] = useState<Difficulty>('medium')
 
+  // slide upload state
+  const [slideResult, setSlideResult] = useState<ParseResult | null>(null)
+  const [slideLoading, setSlideLoading] = useState(false)
+  const [slideError, setSlideError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // streaming state
   const [streaming, setStreaming] = useState(false)
   const [streamDone, setStreamDone] = useState(false)
@@ -29,6 +36,31 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
 
   const parseList = (raw: string) =>
     raw.split(',').map((s) => s.trim()).filter(Boolean)
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSlideError(null)
+    setSlideLoading(true)
+    setSlideResult(null)
+    try {
+      const result = await parseSlideFile(file)
+      setSlideResult(result)
+      // Auto-fill topic from filename if topic is blank
+      if (!topic.trim()) setTopic(fileNameToTopic(result.fileName))
+    } catch (err) {
+      setSlideError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSlideLoading(false)
+      // reset input so re-uploading the same file fires onChange again
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const clearSlide = () => {
+    setSlideResult(null)
+    setSlideError(null)
+  }
 
   const handleGenerate = async () => {
     const categories = parseList(categoriesRaw)
@@ -50,7 +82,7 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
 
     try {
       await generateQuestionsStream(
-        { topic, categories, pointValues, apiKey: apiKey.trim(), difficulty },
+        { topic, categories, pointValues, apiKey: apiKey.trim(), difficulty, slideContext: slideResult?.text },
         (q) => {
           setPreview((prev) => [...(prev ?? []), q])
           setSelected((prev) => new Set([...prev, q.id]))
@@ -111,7 +143,42 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
           </div>
 
           <div className="field">
-            <label>Topic / Subject</label>
+            <label>Upload Slides <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional — .pptx or .pdf)</span></label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pptx,.pdf"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+            {!slideResult ? (
+              <button
+                type="button"
+                className="btn secondary"
+                style={{ width: '100%', textAlign: 'center' }}
+                disabled={slideLoading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {slideLoading ? 'Parsing…' : '📂 Browse for file'}
+              </button>
+            ) : (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', borderRadius: 6,
+                background: 'var(--surface-muted)', border: '1px solid var(--border)',
+              }}>
+                <span style={{ fontSize: 13 }}>
+                  ✅ <strong>{slideResult.fileName}</strong>
+                  {' '}<span style={{ color: 'var(--text-muted)' }}>— {slideResult.pageCount} slide{slideResult.pageCount === 1 ? '' : 's'} parsed</span>
+                </span>
+                <button type="button" className="btn small ghost" onClick={clearSlide}>✕</button>
+              </div>
+            )}
+            {slideError && <p style={{ color: 'var(--danger)', fontSize: 13, margin: '4px 0 0' }}>{slideError}</p>}
+          </div>
+
+          <div className="field">
+            <label>Topic / Subject {slideResult && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(auto-filled from file)</span>}</label>
             <input
               value={topic}
               autoFocus
@@ -189,7 +256,9 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
                   : <>Select questions to add ({selected.size} of {preview.length} selected)</>
               }
             </p>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{difficultyLabel}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {slideResult && `📂 ${slideResult.fileName} · `}{difficultyLabel}
+            </span>
           </div>
 
           <div style={{ maxHeight: 360, overflowY: 'auto', marginBottom: 12 }}>

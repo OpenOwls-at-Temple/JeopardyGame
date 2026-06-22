@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import Modal from './Modal'
-import { generateQuestions, type Difficulty } from '../lib/aiGenerate'
+import { generateQuestionsStream, type Difficulty } from '../lib/aiGenerate'
 import type { Question } from '../types'
 
 const API_KEY_STORAGE = 'owl_jeopardy.anthropic_key'
-
 const DEFAULT_POINTS = [100, 200, 300, 400, 500]
 
 interface Props {
@@ -21,7 +20,9 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
   const [pointsRaw, setPointsRaw] = useState(DEFAULT_POINTS.join(', '))
   const [difficulty, setDifficulty] = useState<Difficulty>('medium')
 
-  const [loading, setLoading] = useState(false)
+  // streaming state
+  const [streaming, setStreaming] = useState(false)
+  const [streamDone, setStreamDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<Question[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -42,26 +43,34 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     else localStorage.removeItem(API_KEY_STORAGE)
 
     setError(null)
-    setLoading(true)
+    setPreview([])       // switch to review screen immediately
+    setSelected(new Set())
+    setStreaming(true)
+    setStreamDone(false)
+
     try {
-      const questions = await generateQuestions({ topic, categories, pointValues, apiKey: apiKey.trim(), difficulty })
-      setPreview(questions)
-      setSelected(new Set(questions.map((q) => q.id)))
+      await generateQuestionsStream(
+        { topic, categories, pointValues, apiKey: apiKey.trim(), difficulty },
+        (q) => {
+          setPreview((prev) => [...(prev ?? []), q])
+          setSelected((prev) => new Set([...prev, q.id]))
+        },
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
-      setLoading(false)
+      setStreaming(false)
+      setStreamDone(true)
     }
   }
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
 
   const handleAdd = () => {
     if (!preview) return
@@ -69,9 +78,19 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     onClose()
   }
 
+  const handleBack = () => {
+    setPreview(null)
+    setStreaming(false)
+    setStreamDone(false)
+    setError(null)
+  }
+
+  const difficultyLabel = difficulty === 'easy' ? '🟢 Easy' : difficulty === 'medium' ? '🟡 Medium' : '🔴 Hard'
+
   return (
     <Modal title="Generate Questions with AI" onClose={onClose}>
-      {!preview ? (
+      {preview === null ? (
+        /* ── Input screen ── */
         <>
           <div className="field">
             <label>Anthropic API Key</label>
@@ -155,56 +174,81 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
 
           <div className="modal-actions">
             <button className="btn ghost" onClick={onClose}>Cancel</button>
-            <button className="btn" onClick={handleGenerate} disabled={loading}>
-              {loading ? 'Generating…' : 'Generate'}
-            </button>
+            <button className="btn" onClick={handleGenerate}>Generate</button>
           </div>
         </>
       ) : (
+        /* ── Review screen (shown immediately, populates as stream arrives) ── */
         <>
-          <p style={{ marginBottom: 12 }}>
-            Select questions to add ({selected.size} of {preview.length} selected)
-            {' '}— <span style={{ fontWeight: 600 }}>
-              {difficulty === 'easy' ? '🟢 Easy' : difficulty === 'medium' ? '🟡 Medium' : '🔴 Hard'}
-            </span>
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <p style={{ margin: 0 }}>
+              {streaming
+                ? <><span className="streaming-pulse">●</span> Generating… {preview.length} so far</>
+                : streamDone
+                  ? <>✓ Done — {preview.length} question{preview.length === 1 ? '' : 's'} generated</>
+                  : <>Select questions to add ({selected.size} of {preview.length} selected)</>
+              }
+            </p>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{difficultyLabel}</span>
+          </div>
+
           <div style={{ maxHeight: 360, overflowY: 'auto', marginBottom: 12 }}>
-            <table className="q-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 32 }}></th>
-                  <th style={{ width: 90 }}>Points</th>
-                  <th>Category</th>
-                  <th>Question</th>
-                  <th>Answer</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.map((q) => (
-                  <tr key={q.id} style={{ opacity: selected.has(q.id) ? 1 : 0.4 }}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(q.id)}
-                        onChange={() => toggleSelect(q.id)}
-                      />
-                    </td>
-                    <td className="points-cell">{q.points}</td>
-                    <td>{q.category}</td>
-                    <td>{q.question}</td>
-                    <td>{q.answer}</td>
+            {preview.length === 0 && streaming ? (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0' }}>
+                Waiting for first question…
+              </p>
+            ) : (
+              <table className="q-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 32 }}></th>
+                    <th style={{ width: 70 }}>Pts</th>
+                    <th style={{ width: 100 }}>Category</th>
+                    <th>Question</th>
+                    <th>Answer</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {preview.map((q, i) => (
+                    <tr
+                      key={q.id}
+                      style={{
+                        opacity: selected.has(q.id) ? 1 : 0.4,
+                        animation: `fadeIn 0.25s ease both`,
+                        animationDelay: `${Math.min(i * 30, 300)}ms`,
+                      }}
+                    >
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(q.id)}
+                          onChange={() => toggleSelect(q.id)}
+                          disabled={streaming}
+                        />
+                      </td>
+                      <td className="points-cell">{q.points}</td>
+                      <td>{q.category}</td>
+                      <td>{q.question}</td>
+                      <td>{q.answer}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {error && <p style={{ color: 'var(--danger)', margin: '0 0 8px' }}>{error}</p>}
 
           <div className="modal-actions">
-            <button className="btn ghost" onClick={() => setPreview(null)}>Back</button>
-            <button className="btn" onClick={handleAdd} disabled={selected.size === 0}>
-              Add {selected.size} Question{selected.size === 1 ? '' : 's'}
+            <button className="btn ghost" onClick={handleBack} disabled={streaming}>Back</button>
+            <button
+              className="btn"
+              onClick={handleAdd}
+              disabled={streaming || selected.size === 0}
+            >
+              {streaming
+                ? 'Generating…'
+                : `Add ${selected.size} Question${selected.size === 1 ? '' : 's'}`}
             </button>
           </div>
         </>

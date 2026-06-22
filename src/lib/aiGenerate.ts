@@ -37,10 +37,19 @@ const DIFFICULTY_INSTRUCTIONS: Record<Difficulty, string> = {
 - Example style: "The electron carrier that is reduced to FADH2 during the Krebs cycle." → FAD (flavin adenine dinucleotide)`,
 }
 
-export async function generateQuestions(opts: GenerateOptions): Promise<Question[]> {
-  const { topic, categories, pointValues, apiKey, difficulty } = opts
+function buildUserPrompt(opts: GenerateOptions, format: 'array' | 'ndjson'): string {
+  const { topic, categories, pointValues, difficulty } = opts
 
-  const userPrompt = `Generate Jeopardy questions for a classroom review game.
+  const outputInstruction = format === 'ndjson'
+    ? `Output each question as a separate JSON object on its own line (NDJSON).
+Do not use an array wrapper. Each line must be a complete, valid JSON object.
+Example:
+{"category":"The Cell","question":"The powerhouse of the cell.","answer":"The mitochondria","points":100}
+{"category":"The Cell","question":"The molecule that stores genetic info.","answer":"DNA","points":200}`
+    : `Return a JSON array of objects with this shape:
+{ "category": string, "question": string, "answer": string, "points": number }`
+
+  return `Generate Jeopardy questions for a classroom review game.
 Topic: "${topic}"
 Categories: ${JSON.stringify(categories)}
 Point values to use (one question per value per category): ${JSON.stringify(pointValues)}
@@ -51,19 +60,31 @@ ${DIFFICULTY_INSTRUCTIONS[difficulty]}
 Within the ${difficulty} level, still scale relative difficulty by point value:
 lower point values should be the easier ${difficulty} questions, higher point values the harder ${difficulty} questions.
 
-Return a JSON array of objects with this shape:
-{ "category": string, "question": string, "answer": string, "points": number }
+${outputInstruction}
 
 Rules:
 - Create one question per (category × point value) combination.
 - The "question" field is the clue players see (not phrased as a question).
 - The "answer" field is the expected answer.
 - Stay on the topic: "${topic}".`
+}
 
+function shapeQuestion(raw: { category?: unknown; question?: unknown; answer?: unknown; points?: unknown }): Question {
+  return {
+    id: generateId(),
+    category: String(raw.category ?? 'General').trim() || 'General',
+    question: String(raw.question ?? '').trim(),
+    answer: String(raw.answer ?? '').trim(),
+    points: Number(raw.points) || 100,
+  }
+}
+
+// Non-streaming: waits for the full response, returns Question[].
+export async function generateQuestions(opts: GenerateOptions): Promise<Question[]> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': apiKey,
+      'x-api-key': opts.apiKey,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-calls': 'true',
       'content-type': 'application/json',
@@ -72,7 +93,7 @@ Rules:
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [{ role: 'user', content: buildUserPrompt(opts, 'array') }],
     }),
   })
 
@@ -82,27 +103,99 @@ Rules:
     throw new Error(`Claude API error: ${msg}`)
   }
 
-  const data = await response.json() as {
-    content: Array<{ type: string; text: string }>
-  }
+  const data = await response.json() as { content: Array<{ type: string; text: string }> }
   const text = data.content.find((c) => c.type === 'text')?.text ?? ''
 
   let parsed: Array<{ category: string; question: string; answer: string; points: number }>
   try {
     parsed = JSON.parse(text)
   } catch {
-    // strip accidental markdown fences
     const clean = text.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '').trim()
     parsed = JSON.parse(clean)
   }
 
   if (!Array.isArray(parsed)) throw new Error('Unexpected response shape from Claude')
+  return parsed.map(shapeQuestion)
+}
 
-  return parsed.map((q) => ({
-    id: generateId(),
-    category: String(q.category ?? 'General').trim() || 'General',
-    question: String(q.question ?? '').trim(),
-    answer: String(q.answer ?? '').trim(),
-    points: Number(q.points) || 100,
-  }))
+// Streaming: calls onQuestion for each question as it arrives via SSE + NDJSON.
+// Returns a promise that resolves when the stream is complete.
+export async function generateQuestionsStream(
+  opts: GenerateOptions,
+  onQuestion: (q: Question) => void,
+): Promise<void> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': opts.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-calls': 'true',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      stream: true,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: buildUserPrompt(opts, 'ndjson') }],
+    }),
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    const msg = (err as { error?: { message?: string } }).error?.message ?? response.statusText
+    throw new Error(`Claude API error: ${msg}`)
+  }
+
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  // sseBuf accumulates raw SSE bytes between flushes; textAccum holds parsed text deltas.
+  let sseBuf = ''
+  let textAccum = ''
+
+  const tryParseLine = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed === '[') return // NDJSON sometimes starts with array bracket
+    // Strip trailing comma in case Claude wraps in an array despite instructions
+    const clean = trimmed.replace(/,$/, '')
+    try {
+      const q = JSON.parse(clean)
+      if (q && typeof q === 'object' && q.question) onQuestion(shapeQuestion(q))
+    } catch {
+      // incomplete fragment — will be retried with more text
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    sseBuf += decoder.decode(value, { stream: true })
+    const sseLines = sseBuf.split('\n')
+    sseBuf = sseLines.pop() ?? ''
+
+    for (const sseLine of sseLines) {
+      if (!sseLine.startsWith('data: ')) continue
+      const payload = sseLine.slice(6).trim()
+      if (payload === '[DONE]') continue
+
+      let event: { type?: string; delta?: { type?: string; text?: string } }
+      try { event = JSON.parse(payload) } catch { continue }
+
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        textAccum += event.delta.text ?? ''
+
+        // Fire onQuestion for each complete newline-terminated JSON object.
+        let newlineIdx: number
+        while ((newlineIdx = textAccum.indexOf('\n')) !== -1) {
+          const completeLine = textAccum.slice(0, newlineIdx)
+          textAccum = textAccum.slice(newlineIdx + 1)
+          tryParseLine(completeLine)
+        }
+      }
+    }
+  }
+
+  // Flush anything remaining (last line with no trailing newline)
+  if (textAccum.trim()) tryParseLine(textAccum)
 }

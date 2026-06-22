@@ -32,7 +32,6 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
   const [streaming, setStreaming] = useState(false)
   const [streamDone, setStreamDone] = useState(false)
   const [fromCache, setFromCache] = useState(false)
-  const [currentCacheKey, setCurrentCacheKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<Question[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -81,7 +80,6 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     setFromCache(false)
 
     const cacheKey = buildCacheKey(topic, categories, pointValues, difficulty)
-    setCurrentCacheKey(cacheKey)
 
     // Cache hit — skip the API call entirely (unless teacher clicked Regenerate)
     if (!skipCache && !slideResult) {
@@ -136,7 +134,11 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
 
   const handleAdd = () => {
     if (!preview) return
-    onAdd(preview.filter((q) => selected.has(q.id)))
+    onAdd(
+      preview.filter(
+        (q) => selected.has(q.id) && q.question.trim() && q.answer.trim(),
+      ),
+    )
     onClose()
   }
 
@@ -145,7 +147,6 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     setStreaming(false)
     setStreamDone(false)
     setFromCache(false)
-    setCurrentCacheKey(null)
     setError(null)
   }
 
@@ -291,7 +292,7 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
               }
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {fromCache && currentCacheKey && (
+              {fromCache && (
                 <button
                   type="button"
                   className="btn small ghost"

@@ -155,22 +155,24 @@ export async function generateQuestionsStream(
     throw new Error(`Claude API error: ${msg}`)
   }
 
-  const reader = response.body!.getReader()
+  if (!response.body) throw new Error('Claude API returned no response body')
+
+  const reader = response.body.getReader()
   const decoder = new TextDecoder()
-  // sseBuf accumulates raw SSE bytes between flushes; textAccum holds parsed text deltas.
   let sseBuf = ''
   let textAccum = ''
 
   const tryParseLine = (line: string) => {
     const trimmed = line.trim()
-    if (!trimmed || trimmed === '[') return // NDJSON sometimes starts with array bracket
-    // Strip trailing comma in case Claude wraps in an array despite instructions
+    // Skip empty lines and JSON array wrapper characters Claude occasionally emits
+    if (!trimmed || trimmed === '[' || trimmed === ']') return
+    // Strip trailing comma in case Claude outputs array-style NDJSON
     const clean = trimmed.replace(/,$/, '')
     try {
       const q = JSON.parse(clean)
       if (q && typeof q === 'object' && q.question) onQuestion(shapeQuestion(q))
     } catch {
-      // incomplete fragment — will be retried with more text
+      // incomplete fragment — more text is still arriving
     }
   }
 

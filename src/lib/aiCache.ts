@@ -15,14 +15,20 @@ interface CacheEntry {
 function load(): CacheEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as CacheEntry[]) : []
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as CacheEntry[]) : []
   } catch {
     return []
   }
 }
 
 function save(entries: CacheEntry[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  } catch {
+    // localStorage quota exceeded — silently skip caching
+  }
 }
 
 export function buildCacheKey(

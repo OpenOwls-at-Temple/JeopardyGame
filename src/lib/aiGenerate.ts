@@ -1,11 +1,14 @@
 import type { Question } from '../types'
 import { generateId } from './storage'
 
+export type Difficulty = 'easy' | 'medium' | 'hard'
+
 export interface GenerateOptions {
   topic: string
   categories: string[]
   pointValues: number[]
   apiKey: string
+  difficulty: Difficulty
 }
 
 const SYSTEM_PROMPT = `You are a Jeopardy question writer for classroom review games.
@@ -14,20 +17,45 @@ When given a topic and categories, produce valid Jeopardy-style clues where the
 expected response. Keep clues clear and educationally appropriate.
 Always respond with valid JSON only — no markdown fences, no extra text.`
 
+const DIFFICULTY_INSTRUCTIONS: Record<Difficulty, string> = {
+  easy: `All questions should be EASY — suitable for an introductory course or first exposure to the topic.
+- Ask for definitions, key vocabulary, and basic facts students would memorize.
+- Every clue should have one obvious, unambiguous answer.
+- Avoid edge cases, exceptions, or multi-step reasoning.
+- Example style: "The process by which plants make food using sunlight." → Photosynthesis`,
+
+  medium: `All questions should be MEDIUM difficulty — suitable for a standard course mid-term review.
+- Ask about relationships between concepts, cause-and-effect, processes, and how things work.
+- Clues may require combining two pieces of knowledge or applying a concept to a scenario.
+- Avoid pure vocabulary recall at the low end; avoid highly specialized details at the high end.
+- Example style: "The organelle that produces most of a cell's ATP through cellular respiration." → The mitochondria`,
+
+  hard: `All questions should be HARD — suitable for an advanced course or final-exam review.
+- Ask about precise mechanisms, exceptions to rules, synthesis across multiple concepts, or specific quantitative details.
+- Clues should require deep understanding, not just recall or basic comprehension.
+- Expect students to distinguish between closely related concepts.
+- Example style: "The electron carrier that is reduced to FADH2 during the Krebs cycle." → FAD (flavin adenine dinucleotide)`,
+}
+
 export async function generateQuestions(opts: GenerateOptions): Promise<Question[]> {
-  const { topic, categories, pointValues, apiKey } = opts
+  const { topic, categories, pointValues, apiKey, difficulty } = opts
 
   const userPrompt = `Generate Jeopardy questions for a classroom review game.
 Topic: "${topic}"
 Categories: ${JSON.stringify(categories)}
 Point values to use (one question per value per category): ${JSON.stringify(pointValues)}
+Overall difficulty level: ${difficulty.toUpperCase()}
+
+${DIFFICULTY_INSTRUCTIONS[difficulty]}
+
+Within the ${difficulty} level, still scale relative difficulty by point value:
+lower point values should be the easier ${difficulty} questions, higher point values the harder ${difficulty} questions.
 
 Return a JSON array of objects with this shape:
 { "category": string, "question": string, "answer": string, "points": number }
 
 Rules:
 - Create one question per (category × point value) combination.
-- Higher point values should be harder questions.
 - The "question" field is the clue players see (not phrased as a question).
 - The "answer" field is the expected answer.
 - Stay on the topic: "${topic}".`

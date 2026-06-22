@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Modal from './Modal'
-import { generateQuestions } from '../lib/aiGenerate'
+import { generateQuestions, type Difficulty } from '../lib/aiGenerate'
 import type { Question } from '../types'
 
 const API_KEY_STORAGE = 'owl_jeopardy.anthropic_key'
@@ -19,6 +19,7 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
   const [topic, setTopic] = useState('')
   const [categoriesRaw, setCategoriesRaw] = useState(existingCategories.slice(0, 5).join(', '))
   const [pointsRaw, setPointsRaw] = useState(DEFAULT_POINTS.join(', '))
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium')
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,7 +44,7 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     setError(null)
     setLoading(true)
     try {
-      const questions = await generateQuestions({ topic, categories, pointValues, apiKey: apiKey.trim() })
+      const questions = await generateQuestions({ topic, categories, pointValues, apiKey: apiKey.trim(), difficulty })
       setPreview(questions)
       setSelected(new Set(questions.map((q) => q.id)))
     } catch (e) {
@@ -118,6 +119,38 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
             />
           </div>
 
+          <div className="field">
+            <label>Difficulty Level</label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDifficulty(d)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    borderRadius: 6,
+                    border: difficulty === d ? '2px solid var(--primary)' : '2px solid var(--border)',
+                    background: difficulty === d ? 'var(--primary)' : 'transparent',
+                    color: difficulty === d ? '#fff' : 'var(--text)',
+                    fontWeight: difficulty === d ? 600 : 400,
+                    cursor: 'pointer',
+                    textTransform: 'capitalize',
+                    fontSize: 14,
+                  }}
+                >
+                  {d === 'easy' ? '🟢' : d === 'medium' ? '🟡' : '🔴'} {d}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+              {difficulty === 'easy' && 'Definitions, key vocabulary, basic facts — ideal for intro courses.'}
+              {difficulty === 'medium' && 'Relationships, cause & effect, how things work — standard mid-term level.'}
+              {difficulty === 'hard' && 'Precise mechanisms, edge cases, synthesis across concepts — advanced level.'}
+            </p>
+          </div>
+
           {error && <p style={{ color: 'var(--danger)', margin: '0 0 8px' }}>{error}</p>}
 
           <div className="modal-actions">
@@ -130,7 +163,10 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
       ) : (
         <>
           <p style={{ marginBottom: 12 }}>
-            Select questions to add ({selected.size} of {preview.length} selected):
+            Select questions to add ({selected.size} of {preview.length} selected)
+            {' '}— <span style={{ fontWeight: 600 }}>
+              {difficulty === 'easy' ? '🟢 Easy' : difficulty === 'medium' ? '🟡 Medium' : '🔴 Hard'}
+            </span>
           </p>
           <div style={{ maxHeight: 360, overflowY: 'auto', marginBottom: 12 }}>
             <table className="q-table">

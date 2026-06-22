@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import Modal from './Modal'
 import { generateQuestionsStream, type Difficulty } from '../lib/aiGenerate'
 import { parseSlideFile, fileNameToTopic, type ParseResult } from '../lib/slideParser'
+import { buildCacheKey, cacheGet, cachePut } from '../lib/aiCache'
 import type { Question } from '../types'
 
 const API_KEY_STORAGE = 'owl_jeopardy.anthropic_key'
@@ -27,9 +28,11 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
   const [slideError, setSlideError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // streaming state
+  // streaming + cache state
   const [streaming, setStreaming] = useState(false)
   const [streamDone, setStreamDone] = useState(false)
+  const [fromCache, setFromCache] = useState(false)
+  const [currentCacheKey, setCurrentCacheKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<Question[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -62,7 +65,7 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     setSlideError(null)
   }
 
-  const handleGenerate = async () => {
+  const runGenerate = async (skipCache: boolean) => {
     const categories = parseList(categoriesRaw)
     const pointValues = parseList(pointsRaw).map(Number).filter((n) => !isNaN(n) && n > 0)
 
@@ -75,19 +78,43 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     else localStorage.removeItem(API_KEY_STORAGE)
 
     setError(null)
-    setPreview([])       // switch to review screen immediately
+    setFromCache(false)
+
+    const cacheKey = buildCacheKey(topic, categories, pointValues, difficulty)
+    setCurrentCacheKey(cacheKey)
+
+    // Cache hit — skip the API call entirely (unless teacher clicked Regenerate)
+    if (!skipCache && !slideResult) {
+      const cached = cacheGet(cacheKey)
+      if (cached) {
+        setPreview(cached)
+        setSelected(new Set(cached.map((q) => q.id)))
+        setFromCache(true)
+        setStreamDone(true)
+        return
+      }
+    }
+
+    setPreview([])
     setSelected(new Set())
     setStreaming(true)
     setStreamDone(false)
+
+    const accumulated: Question[] = []
 
     try {
       await generateQuestionsStream(
         { topic, categories, pointValues, apiKey: apiKey.trim(), difficulty, slideContext: slideResult?.text },
         (q) => {
+          accumulated.push(q)
           setPreview((prev) => [...(prev ?? []), q])
           setSelected((prev) => new Set([...prev, q.id]))
         },
       )
+      // Only cache when there's no slide context — slide results are document-specific
+      if (!slideResult && accumulated.length > 0) {
+        cachePut(cacheKey, accumulated, topic, difficulty)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -95,6 +122,9 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
       setStreamDone(true)
     }
   }
+
+  const handleGenerate = () => runGenerate(false)
+  const handleRegenerate = () => runGenerate(true)
 
   const toggleSelect = (id: string) =>
     setSelected((prev) => {
@@ -114,6 +144,8 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     setPreview(null)
     setStreaming(false)
     setStreamDone(false)
+    setFromCache(false)
+    setCurrentCacheKey(null)
     setError(null)
   }
 
@@ -251,14 +283,28 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
             <p style={{ margin: 0 }}>
               {streaming
                 ? <><span className="streaming-pulse">●</span> Generating… {preview.length} so far</>
-                : streamDone
-                  ? <>✓ Done — {preview.length} question{preview.length === 1 ? '' : 's'} generated</>
-                  : <>Select questions to add ({selected.size} of {preview.length} selected)</>
+                : fromCache
+                  ? <>⚡ Loaded from cache — {preview.length} question{preview.length === 1 ? '' : 's'}</>
+                  : streamDone
+                    ? <>✓ Done — {preview.length} question{preview.length === 1 ? '' : 's'} generated</>
+                    : <>Select questions to add ({selected.size} of {preview.length} selected)</>
               }
             </p>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              {slideResult && `📂 ${slideResult.fileName} · `}{difficultyLabel}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {fromCache && currentCacheKey && (
+                <button
+                  type="button"
+                  className="btn small ghost"
+                  onClick={handleRegenerate}
+                  title="Bypass cache and generate fresh questions"
+                >
+                  ↺ Regenerate
+                </button>
+              )}
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {slideResult && `📂 ${slideResult.fileName} · `}{difficultyLabel}
+              </span>
+            </div>
           </div>
 
           <div style={{ maxHeight: 360, overflowY: 'auto', marginBottom: 12 }}>

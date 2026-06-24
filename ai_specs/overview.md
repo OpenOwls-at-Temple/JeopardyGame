@@ -74,7 +74,7 @@ a classic categories/points board and host-awarded team scoring.
 | User Type | Description |
 |-----------|-------------|
 | Primary User | A single teacher running the app locally in their own browser to prep and host a review game |
-| Internal User | The two-person student team (Wei: LLM pipeline; teammate: app/game engine) building and extending it |
+| Internal User | The two-person student team (Wei: LLM pipeline; Zirong: app/game engine) building and extending it |
 
 ---
 
@@ -96,7 +96,7 @@ a classic categories/points board and host-awarded team scoring.
 |-------------|----------------|
 | Faculty Sponsor (Alex Pang) | Defines scope, reviews milestones, owns the OpenOwls SDD convention and the `owl-jeopardy-pilot` reference architecture |
 | Wei | Owns the LLM integration (`aiGenerate.ts`, `aiCache.ts`, `slideParser.ts`, `AIGenerateModal.tsx`) |
-| Teammate / Student | App shell, game engine, board/scoring logic, docs |
+| Zirong | App shell, game engine, board/scoring logic, docs |
 
 ---
 

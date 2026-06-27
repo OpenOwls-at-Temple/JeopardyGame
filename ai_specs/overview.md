@@ -94,7 +94,7 @@ a classic categories/points board and host-awarded team scoring.
 
 | Name / Role | Responsibility |
 |-------------|----------------|
-| Faculty Sponsor (Alex Pang) | Defines scope, reviews milestones, owns the OpenOwls SDD convention and the `owl-jeopardy-pilot` reference architecture |
+| Faculty Sponsor (Professor Pang) | Defines scope, reviews milestones, owns the OpenOwls SDD convention and the `owl-jeopardy-pilot` reference architecture |
 | Wei | Owns the LLM integration (`aiGenerate.ts`, `aiCache.ts`, `slideParser.ts`, `AIGenerateModal.tsx`) |
 | Zirong | App shell, game engine, board/scoring logic, docs |
 

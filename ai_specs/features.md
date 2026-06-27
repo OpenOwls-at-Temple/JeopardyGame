@@ -54,7 +54,7 @@
 - [x] Given I click "✨ Generate with AI", when I fill in topic/categories/points/difficulty and my own Anthropic API key, then questions stream into a review table one at a time as Claude generates them (SSE + NDJSON)
 - [x] Given the review table, when generation finishes, then I can deselect any question before adding the rest to my bank
 - [x] Given I pick a difficulty (easy/medium/hard), when questions are generated, then the prompt instructs Claude to calibrate accordingly, scaling further by point value within that tier
-- [x] **Divergence from reference:** the API key is supplied by the teacher and used **directly from the browser** (`anthropic-dangerous-direct-browser-calls`). There is no server-side proxy, no system-wide key, no per-user quota, and no usage logging. See `llm-integration.md` for the risk and the planned mitigation.
+- [x] **Divergence from reference:** the API key is supplied by the teacher and used **directly from the browser** (`anthropic-dangerous-direct-browser-calls`). There is no server-side proxy, no system-wide key, no per-user quota, and no usage logging. See `llm-integration.md` for the risk — **and Feature 6 below for the proposed fix.**
 - [x] **Divergence from reference:** there is no draft/sign-off queue — selecting a question in the review table and clicking "Add" writes it straight into the bank.
 
 ---
@@ -81,6 +81,30 @@
 - [x] Given I generate for a topic/category/point/difficulty combination already in the LRU cache (max 10 entries, `localStorage`), when I click Generate, then cached results load instantly with a "⚡ Loaded from cache" badge
 - [x] Given a cache hit, when I want fresh results anyway, then I can click "↺ Regenerate" to bypass the cache
 - [x] Given a slide was uploaded, when I generate, then the result is **never** cached (slide content is document-specific and would go stale)
+
+---
+
+## Next Iteration — Proposed (spec'd, not yet built)
+
+> Per Professor Pang's 2026-06-24 guidance: pick gaps vs. the reference repo one at a time, spec each one
+> before coding it, rather than deciding the whole convergence question up front. This is the first
+> one — picked because it's the only item in "Out of Scope" below that's an actual **security risk**
+> rather than a missing convenience feature. Proposed here for the team meeting; not yet implemented.
+
+### Feature 6: Server-Side LLM Proxy
+**As a** teacher,
+**I want to** use AI question generation without ever exposing an API key in my own browser,
+**So that** the feature is safe to use on any classroom computer and doesn't require me to have my own Anthropic account.
+
+**Acceptance Criteria:**
+- [ ] Given I open the AI Generate modal, when it loads, then there is no "Anthropic API Key" field — generation works immediately using a system-wide key the team configures once
+- [ ] Given I click Generate, when the request is sent, then it goes to our own backend endpoint (e.g. `POST /api/generate`), never directly to `api.anthropic.com` from the browser
+- [ ] Given the backend receives a request, then it reads `ANTHROPIC_API_KEY` from a server-side environment variable and forwards the call — the key is never present in any browser request, response, or `localStorage`
+- [ ] Given streaming generation, when questions are produced, then the backend relays the SSE/NDJSON stream through to the same review-table UX that exists today — no visible behavior change for the teacher beyond the missing API-key field
+- [ ] Given many generation requests happen in a short window, when a soft cap is reached (proposed: 20 calls/day, matching the reference repo's default), then the teacher sees a clear "generation limit reached, try again tomorrow" message instead of the team's API budget being silently exhausted
+- [ ] Given the backend is unreachable or misconfigured, when generation is attempted, then the existing "Claude API error: ..." error UX in the modal is reused — no new frontend error states needed
+
+**Explicitly out of scope for this iteration** (deferred to a later one, since they require auth which is its own larger feature): BYOK (bring-your-own-key) as an alternative to the system key, per-user identity-tied quotas, a usage-logging table. This iteration only removes the client-side key exposure using one shared system key — see `llm-integration.md`'s Migration Plan for the concrete technical design.
 
 ---
 

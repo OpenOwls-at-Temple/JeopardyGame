@@ -38,7 +38,7 @@ reference architecture.
 - [x] 2026-06-24 — Full manual regression pass in a live browser preview: bank editor, AI modal (all
   fields, difficulty toggle, validation, cancel), game setup, play board (tile → reveal → score →
   disable → progress counter), `localStorage` persistence — all confirmed working; `npm run build` clean
-- [x] 2026-06-24 — Reviewed faculty feedback (Alex) on doc convention; cloned `hoot` and
+- [x] 2026-06-24 — Reviewed faculty feedback (Professor Pang) on doc convention; cloned `hoot` and
   `owl-jeopardy-pilot` reference repos to extract the actual OpenOwls SDD template
 - [x] 2026-06-24 — Migrated root `architecture.md` / `llm-integration.md` / `planning.md` into
   `ai_specs/` (`overview.md`, `features.md`, `architecture-planning.md`, `llm-integration.md`,
@@ -49,8 +49,10 @@ reference architecture.
 
 ## In Progress
 
-- [ ] Nothing actively in progress — `branch2` is feature-complete and tested; next step is a team
-  decision (see Up Next)
+- [ ] **Feature 6 — Server-Side LLM Proxy** is fully spec'd (`features.md`, `llm-integration.md`
+  Migration Plan, `architecture-planning.md`, `deployment.md` env vars) but **not yet implemented**.
+  Ready for team review before coding starts, per Professor Pang's "update the spec, then generate the code"
+  guidance.
 
 ---
 
@@ -58,17 +60,20 @@ reference architecture.
 
 | Item | Reason | Owner |
 |------|--------|-------|
-| Convergence decision (auth/backend/sharing/difficulty model) | Needs discussion with Wei and Alex before any code changes — this is a scope call, not something to decide unilaterally | Student team + Alex |
+| Whether to implement Feature 6 now or wait for the team meeting | Spec is ready; Professor Pang offered a separate meeting with Zirong to align priorities — implementation should probably wait for that confirmation | Wei + Zirong + Professor Pang |
 
 ---
 
 ## Up Next
 
-- [ ] Discuss with Wei + Alex: stay a frontend-only prototype track, or start converging toward
-  `owl-jeopardy-pilot`'s architecture (backend proxy for the API key is the highest-priority gap —
-  see `ai_specs/llm-integration.md` Migration Plan)
-- [ ] If converging: stand up a minimal backend so the Anthropic key moves server-side (smallest
-  fix for the biggest flagged risk)
+- [ ] Team meeting with Zirong + Professor Pang to confirm Feature 6's design (hosting choice: Vercel/Netlify
+  function vs. a small Express service on Render) before writing any backend code
+- [ ] Once confirmed: implement Feature 6 — add the backend, update `aiGenerate.ts`'s two `fetch`
+  calls, remove the API-key field from `AIGenerateModal.tsx` (see `llm-integration.md` Migration
+  Plan for the exact diff scope)
+- [ ] After Feature 6 ships: repeat the cycle for the next-highest-value gap (per Professor Pang's guidance,
+  one feature at a time — auth is the natural next one, since sharing/admin/BYOK/quotas all depend
+  on it)
 - [ ] Decide whether `progress.md`'s Session Log going forward should track `branch2` only or be
   reconciled with `main`'s history once/if the branches merge
 
@@ -78,7 +83,9 @@ reference architecture.
 
 | Date | What Was Done |
 |------|---------------|
-| 2026-06-24 | Restructured docs per Alex's feedback to match the OpenOwls SDD `ai_specs/` convention used in `hoot` and `owl-jeopardy-pilot`. Cloned both reference repos to extract the real template. In doing so, surfaced and documented a substantive scope/architecture gap (no auth/admin/sharing/CSV-import/difficulty-model here; client-side LLM calls with no quotas or draft-review vs. the reference's server-side+BYOK+quota+sign-off design) rather than silently glossing over it — flagged in `overview.md`, `features.md`, and `llm-integration.md` for discussion with Wei and Alex. |
+| 2026-06-24 | Professor Pang's feedback on the convergence question: don't decide the whole scope question up front — pick gaps vs. `owl-jeopardy-pilot` one at a time, spec each before coding it ("Take a look on what have been built, think about the new features, update the specs, then generate the code"). Picked Feature 6 (server-side LLM proxy) as the first one — it's the only "Out of Scope" item that's an actual security risk rather than a missing convenience. Fully spec'd it: `features.md` (acceptance criteria), `llm-integration.md` (concrete endpoint contract, env vars, soft-quota design, exact frontend diff scope), `architecture-planning.md`, `deployment.md` (env vars). No backend code written yet — spec is ready for the team meeting Professor Pang offered. |
+| 2026-06-24 | Updated `ai_specs/overview.md`'s stakeholder table to use the teammate's actual name (Zirong) instead of a generic placeholder. |
+| 2026-06-24 | Restructured docs per Professor Pang's feedback to match the OpenOwls SDD `ai_specs/` convention used in `hoot` and `owl-jeopardy-pilot`. Cloned both reference repos to extract the real template. In doing so, surfaced and documented a substantive scope/architecture gap (no auth/admin/sharing/CSV-import/difficulty-model here; client-side LLM calls with no quotas or draft-review vs. the reference's server-side+BYOK+quota+sign-off design) rather than silently glossing over it — flagged in `overview.md`, `features.md`, and `llm-integration.md` for discussion with Wei and Professor Pang. |
 | 2026-06-24 | Final end-to-end regression test of `branch2` in a live browser preview before reporting status to faculty: bank editor, AI generate modal (validation, difficulty toggle, cancel flow), Add Question modal, full game flow (setup → board → tile → reveal → score → Done → disabled tile → progress counter), `localStorage` persistence verified directly. `npm run build` (tsc strict + vite) clean. Confirmed all 5 `branch2` commits already pushed to `origin/branch2`. |
 | 2026-06-22 | Code review pass across the AI pipeline: fixed null `response.body` guard, NDJSON `]`-skip bug, cache quota-exceeded crash, corrupted-cache-JSON crash, malformed (empty question/answer) questions being addable, removed dead `currentCacheKey` state, added missing `--primary` CSS variable. |
 | 2026-06-22 | Built three AI pipeline features in sequence on `branch2`: difficulty calibration, SSE+NDJSON streaming, slide ingestion (`.pptx`/`.pdf`), `localStorage` LRU caching. Wrote initial `architecture.md` and `llm-integration.md` (now migrated into `ai_specs/`). |

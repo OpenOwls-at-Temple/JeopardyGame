@@ -145,9 +145,11 @@ These are the points where future work plugs in without touching existing code:
 
 - **New question producer:** add a module under `src/lib/` returning `Promise<Question[]>`, wire a
   button in `BankEditorPage.tsx`, call `AppContext.updateBank()`. Done.
-- **Backend / proxy (closing the security gap in `llm-integration.md`):** replace the `fetch` in
-  `aiGenerate.ts` with a call to e.g. `/api/generate`; add a thin server that holds the key and
-  forwards to Anthropic. `GenerateOptions` drops `apiKey`; no UI or context changes required.
+- **Backend / proxy (spec'd as `features.md` Feature 6, not yet built):** replace the `fetch` in
+  `aiGenerate.ts` with a call to `/api/generate`; add a thin Node serverless function or Express
+  server that holds `ANTHROPIC_API_KEY` and forwards to Anthropic. `GenerateOptions` drops `apiKey`;
+  no other UI or context changes required. Full request/response contract in
+  `ai_specs/llm-integration.md`'s Migration Plan.
 - **Persistence upgrade:** all storage logic is isolated in `storage.ts` — swapping `localStorage`
   for a real database only touches that one file.
 - **New entity type** (e.g. a `difficulty`-bearing question model, or flashcards): add the type to

@@ -18,7 +18,7 @@ A frontend-only, browser-based Jeopardy-style review game that lets a teacher bu
 ## Relationship to `owl-jeopardy-pilot`
 
 This repo is **not** the same product as the team's other reference repo,
-[`owl-jeopardy-pilot`](https://github.com/OpenOwls-at-Temple/owl-jeopardy-pilot), which is Alex's
+[`owl-jeopardy-pilot`](https://github.com/OpenOwls-at-Temple/owl-jeopardy-pilot), which is Professor Pang's
 fuller vision of Owl Jeopardy (FastAPI backend, Postgres, Microsoft SSO, admin-managed users,
 sharing/cloning between faculty, CSV import, a `subject_area → category → question(difficulty 1–5)`
 data model, and LLM generation scoped to Phase 2 with server-side calls, quotas, and a draft/sign-off

@@ -34,12 +34,12 @@ None required. There is no `.env` file in this repo. The Anthropic API key is en
 at runtime in the AI Generate modal and optionally saved to `localStorage` — it is never a build-time
 variable and must never be committed.
 
-If the Migration Plan in `ai_specs/llm-integration.md` is implemented (server-side proxy), that
-backend would need:
+If `features.md` Feature 6 (server-side LLM proxy) is built, that backend would need:
 
 | Variable | Description |
 |----------|--------------|
 | `ANTHROPIC_API_KEY` | System-wide key, held server-side only, never sent to the client |
+| `GENERATION_DAILY_CAP` | Optional, defaults to 20 — soft quota on `/api/generate` calls per day (see `llm-integration.md` Migration Plan) |
 
 ---
 

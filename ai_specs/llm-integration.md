@@ -41,9 +41,10 @@ This repo shipped generation in **Phase 1**, and:
   table.
 
 This is acceptable for a single-teacher, single-device prototype (the classroom equivalent of "it's
-your own laptop, your own key") but is **not safe to ship multi-user** as-is. Closing this gap means
-adding a backend proxy — see **Migration Plan** below. This is a known, flagged trade-off, not an
-oversight; raised here so it's visible to the faculty sponsor and the rest of the team.
+your own laptop, your own key") but is **not safe to ship multi-user** as-is. This is a known,
+flagged trade-off, not an oversight, and per Professor Pang's 2026-06-24 feedback it's now spec'd as a concrete
+next-iteration feature — see `features.md` Feature 6 and the **Migration Plan** below for the full
+technical design, ready for team review before any code is written.
 
 ---
 
@@ -176,19 +177,45 @@ multi-user use.
 
 ---
 
-## Migration Plan — Closing the Gap with the Reference Design
+## Migration Plan — Server-Side LLM Proxy (spec'd as `features.md` Feature 6)
 
-If/when this converges toward `owl-jeopardy-pilot`'s approach:
+Per Professor Pang's 2026-06-24 guidance, this is the first reference-repo gap picked for a "next iteration" —
+specified here in full before any code is written, ready for team review.
 
-1. Stand up a minimal backend (even a single serverless function) that holds `LLM_API_KEY` as an
-   env var and exposes `POST /api/generate`
-2. In `aiGenerate.ts`, replace the direct `fetch('https://api.anthropic.com/...')` call with
-   `fetch('/api/generate', { body: JSON.stringify({ topic, categories, pointValues, difficulty }) })`
-   — `GenerateOptions` drops `apiKey`; no other code changes required (this is exactly the seam
-   described in `architecture-planning.md`)
-3. Add a per-teacher or per-session quota on the backend if this ever moves beyond a single device
-4. Optionally add a lightweight draft state (even an in-memory "pending" flag before the existing
-   review table) to match the reference's sign-off requirement
+### Proposed design
+
+- **Hosting (proposed, pending team confirmation):** a single Node.js serverless function (Vercel
+  or Netlify Functions) deployed alongside the static frontend, *or* a minimal Express server as a
+  Render Web Service if the team prefers one deploy target that looks more like the reference
+  repo's `backend/`. Either way it's intentionally much smaller than FastAPI — one route, one job.
+- **Endpoint:** `POST /api/generate`
+  - **Request body:** `{ topic: string, categories: string[], pointValues: number[], difficulty: 'easy'|'medium'|'hard', slideContext?: string }` — identical to today's `GenerateOptions` minus `apiKey`
+  - **Response (non-streaming):** `Question[]` JSON array, same shape `aiGenerate.ts` already produces
+  - **Response (streaming):** same SSE relay the frontend already parses — the backend forwards
+    Anthropic's stream through unchanged so `generateQuestionsStream()`'s parsing logic in
+    `aiGenerate.ts` needs no rewrite, only its URL/headers change
+- **Server-side env var:** `ANTHROPIC_API_KEY` — read once at server start, never logged, never
+  returned in any response body
+- **Soft quota:** an in-memory (or simple file/KV) counter of calls per day, capped at 20 (matching
+  the reference repo's per-user default, applied here per-deployment since there's no per-user
+  identity yet). On cap, return `429` with a JSON error the frontend already knows how to surface
+  (`Claude API error: {message}` path in `aiGenerate.ts`)
+- **Frontend changes implied (not yet made):**
+  - `GenerateOptions` drops `apiKey`
+  - `aiGenerate.ts`'s two `fetch()` calls point at `/api/generate` instead of
+    `https://api.anthropic.com/v1/messages`, and drop the `x-api-key` /
+    `anthropic-dangerous-direct-browser-calls` headers entirely (the backend adds its own
+    `x-api-key` server-side)
+  - `AIGenerateModal.tsx` removes the "Anthropic API Key" field, the "save key" checkbox, and all
+    `owl_jeopardy.anthropic_key` `localStorage` reads/writes
+  - No changes needed to `AIGenerateModal.tsx`'s streaming/review-table logic, `aiCache.ts`, or
+    `slideParser.ts` — this seam is exactly as narrow as `architecture-planning.md` predicted
+
+### Deferred to a later iteration (needs auth first)
+- BYOK (bring-your-own-key) as a fallback/alternative to the system key
+- Per-user quotas tied to identity, and a `llm_usage` logging table
+- The draft/sign-off review queue (`question_drafts` with pending/accepted/rejected state) — the
+  existing review-table-then-Add flow stays as the human-in-the-loop step for this iteration
 
 ---
 

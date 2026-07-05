@@ -10,16 +10,13 @@ migrated to the OpenOwls SDD `ai_specs/` convention per faculty feedback (2026-0
 
 ## Status Summary
 
-`branch2` adds AI-assisted question generation (topic-based + slide-grounded, streaming, cached) on
-top of the Phase 1 manual game from `main`. All features are built, code-reviewed, and manually
-tested end-to-end in a live preview (bank editor, AI modal, game creation, play board, scoring,
-persistence) — see Session Log. `npm run build` is clean. Docs were reorganized into `ai_specs/`
-on 2026-06-24 after faculty review identified both a doc-convention mismatch and a real scope/
-architecture gap against the team's other reference repo, `owl-jeopardy-pilot` (no auth, no backend,
-client-side LLM calls here vs. server-side+quotas+draft-review there). That gap is now documented
-explicitly in `ai_specs/overview.md`, `ai_specs/features.md`, and `ai_specs/llm-integration.md`
-rather than left implicit — **decision pending** on whether/how far to converge toward the
-reference architecture.
+`branch2` has been merged into `main` (2026-07-05) per Professor Pang's request. All Phase 1
+(manual game) and Phase 2 (AI generation) features are built, tested, and on `main`. `npm run build`
+is clean. Docs follow the OpenOwls SDD `ai_specs/` convention. Feature 6 (FastAPI backend,
+OpenAI-compatible LLM layer, Supabase Postgres, hard quota, DeepSeek for local testing) and
+Feature 7 (user-level file storage via Supabase Storage) are fully spec'd and ready to implement
+after the team catch-up meeting (Mon/Tue 2026-07-07 or 2026-07-08). Professor Pang plans to chip
+in to the project this week (Discord 2026-07-04).
 
 ---
 
@@ -49,10 +46,13 @@ reference architecture.
 
 ## In Progress
 
-- [ ] **Feature 6 — Server-Side LLM Proxy** is fully spec'd (`features.md`, `llm-integration.md`
-  Migration Plan, `architecture-planning.md`, `deployment.md` env vars) but **not yet implemented**.
-  Ready for team review before coding starts, per Professor Pang's "update the spec, then generate the code"
-  guidance.
+- [ ] **Feature 6 — Server-Side LLM Proxy** spec updated (2026-07-05) with Professor Pang's
+  2026-06-28 architectural guidance: FastAPI on Render, Supabase Postgres, OpenAI-compatible LLM
+  abstraction (model switchable via `.env`), DeepSeek for local/testing, hard daily token quota.
+  Not yet implemented — waiting for team meeting (Mon/Tue per Discord).
+- [ ] **Feature 7 — User-Level File Storage** spec'd for the first time (2026-07-05) per Professor
+  Pang's 2026-06-28 requirement: Supabase Storage for slide uploads, session-scoped. Depends on
+  Feature 6's FastAPI backend. Not yet implemented.
 
 ---
 
@@ -60,22 +60,19 @@ reference architecture.
 
 | Item | Reason | Owner |
 |------|--------|-------|
-| Whether to implement Feature 6 now or wait for the team meeting | Spec is ready; Professor Pang offered a separate meeting with Zirong to align priorities — implementation should probably wait for that confirmation | Wei + Zirong + Professor Pang |
+| Implementing Feature 6 & 7 | Specs ready; team catch-up (Mon/Tue 2026-07-07 or 2026-07-08) needed to confirm Render+Supabase setup steps and who owns the backend work | Wei + Zirong + Professor Pang |
 
 ---
 
 ## Up Next
 
-- [ ] Team meeting with Zirong + Professor Pang to confirm Feature 6's design (hosting choice: Vercel/Netlify
-  function vs. a small Express service on Render) before writing any backend code
-- [ ] Once confirmed: implement Feature 6 — add the backend, update `aiGenerate.ts`'s two `fetch`
-  calls, remove the API-key field from `AIGenerateModal.tsx` (see `llm-integration.md` Migration
-  Plan for the exact diff scope)
-- [ ] After Feature 6 ships: repeat the cycle for the next-highest-value gap (per Professor Pang's guidance,
-  one feature at a time — auth is the natural next one, since sharing/admin/BYOK/quotas all depend
-  on it)
-- [ ] Decide whether `progress.md`'s Session Log going forward should track `branch2` only or be
-  reconciled with `main`'s history once/if the branches merge
+- [ ] Team catch-up Mon 2026-07-07 or Tue 2026-07-08 — confirm Feature 6 implementation plan
+  (who sets up Render + Supabase, who owns the FastAPI backend, branch strategy)
+- [ ] Implement Feature 6: `backend/` FastAPI service, update `aiGenerate.ts` (URL + simpler SSE
+  parser), remove API-key field from `AIGenerateModal.tsx` — see `llm-integration.md` Migration Plan
+- [ ] Implement Feature 7: `POST /api/upload-slide`, Supabase Storage, server-side slide parsing
+- [ ] After Feature 6+7: auth/SSO (Microsoft Entra or otherwise) is the natural next feature
+  since sharing, admin, per-user quotas, and BYOK all depend on user identity
 
 ---
 
@@ -83,6 +80,7 @@ reference architecture.
 
 | Date | What Was Done |
 |------|---------------|
+| 2026-07-05 | Updated specs to incorporate Professor Pang's 2026-06-28 architectural guidance: Feature 6 spec rewritten (FastAPI on Render, Supabase Postgres, OpenAI-compatible LLM abstraction with DeepSeek for local/free testing, hard daily token quota, model switchable via `.env`); Feature 7 spec'd for the first time (user-level file storage via Supabase Storage); `architecture-planning.md` updated with planned full-stack diagram; `deployment.md` fully rewritten with Render+Supabase target and local DeepSeek setup. Merged `branch2` → `main` per Professor Pang's request. |
 | 2026-06-24 | Professor Pang's feedback on the convergence question: don't decide the whole scope question up front — pick gaps vs. `owl-jeopardy-pilot` one at a time, spec each before coding it ("Take a look on what have been built, think about the new features, update the specs, then generate the code"). Picked Feature 6 (server-side LLM proxy) as the first one — it's the only "Out of Scope" item that's an actual security risk rather than a missing convenience. Fully spec'd it: `features.md` (acceptance criteria), `llm-integration.md` (concrete endpoint contract, env vars, soft-quota design, exact frontend diff scope), `architecture-planning.md`, `deployment.md` (env vars). No backend code written yet — spec is ready for the team meeting Professor Pang offered. |
 | 2026-06-24 | Updated `ai_specs/overview.md`'s stakeholder table to use the teammate's actual name (Zirong) instead of a generic placeholder. |
 | 2026-06-24 | Restructured docs per Professor Pang's feedback to match the OpenOwls SDD `ai_specs/` convention used in `hoot` and `owl-jeopardy-pilot`. Cloned both reference repos to extract the real template. In doing so, surfaced and documented a substantive scope/architecture gap (no auth/admin/sharing/CSV-import/difficulty-model here; client-side LLM calls with no quotas or draft-review vs. the reference's server-side+BYOK+quota+sign-off design) rather than silently glossing over it — flagged in `overview.md`, `features.md`, and `llm-integration.md` for discussion with Wei and Professor Pang. |

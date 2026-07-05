@@ -179,43 +179,119 @@ multi-user use.
 
 ## Migration Plan — Server-Side LLM Proxy (spec'd as `features.md` Feature 6)
 
-Per Professor Pang's 2026-06-24 guidance, this is the first reference-repo gap picked for a "next iteration" —
-specified here in full before any code is written, ready for team review.
+Per Professor Pang's 2026-06-28 guidance: **FastAPI on Render**, **Supabase Postgres**, **OpenAI-compatible
+LLM abstraction** (model switchable via `.env`, zero code change), **DeepSeek** for local/free testing,
+**hard daily token quota** (app stops rather than generating surprise bills). Updated 2026-07-05.
 
-### Proposed design
+### Stack
 
-- **Hosting (proposed, pending team confirmation):** a single Node.js serverless function (Vercel
-  or Netlify Functions) deployed alongside the static frontend, *or* a minimal Express server as a
-  Render Web Service if the team prefers one deploy target that looks more like the reference
-  repo's `backend/`. Either way it's intentionally much smaller than FastAPI — one route, one job.
-- **Endpoint:** `POST /api/generate`
-  - **Request body:** `{ topic: string, categories: string[], pointValues: number[], difficulty: 'easy'|'medium'|'hard', slideContext?: string }` — identical to today's `GenerateOptions` minus `apiKey`
-  - **Response (non-streaming):** `Question[]` JSON array, same shape `aiGenerate.ts` already produces
-  - **Response (streaming):** same SSE relay the frontend already parses — the backend forwards
-    Anthropic's stream through unchanged so `generateQuestionsStream()`'s parsing logic in
-    `aiGenerate.ts` needs no rewrite, only its URL/headers change
-- **Server-side env var:** `ANTHROPIC_API_KEY` — read once at server start, never logged, never
-  returned in any response body
-- **Soft quota:** an in-memory (or simple file/KV) counter of calls per day, capped at 20 (matching
-  the reference repo's per-user default, applied here per-deployment since there's no per-user
-  identity yet). On cap, return `429` with a JSON error the frontend already knows how to surface
-  (`Claude API error: {message}` path in `aiGenerate.ts`)
-- **Frontend changes implied (not yet made):**
-  - `GenerateOptions` drops `apiKey`
-  - `aiGenerate.ts`'s two `fetch()` calls point at `/api/generate` instead of
-    `https://api.anthropic.com/v1/messages`, and drop the `x-api-key` /
-    `anthropic-dangerous-direct-browser-calls` headers entirely (the backend adds its own
-    `x-api-key` server-side)
-  - `AIGenerateModal.tsx` removes the "Anthropic API Key" field, the "save key" checkbox, and all
-    `owl_jeopardy.anthropic_key` `localStorage` reads/writes
-  - No changes needed to `AIGenerateModal.tsx`'s streaming/review-table logic, `aiCache.ts`, or
-    `slideParser.ts` — this seam is exactly as narrow as `architecture-planning.md` predicted
+| Component | Technology | Notes |
+|-----------|------------|-------|
+| Backend | FastAPI (Python) | Deployed on Render as a Web Service |
+| Database | Supabase Postgres | Managed; used for `llm_usage` quota tracking |
+| LLM client | Python `openai` SDK | Configured with `LLM_BASE_URL` + `LLM_MODEL` + `LLM_API_KEY` — OpenAI-compatible |
+| Local / testing model | DeepSeek | Free via `https://api.deepseek.com` or a local Ollama instance |
+| Production model | Any OpenAI-compatible provider | Swap by changing `.env`, no code change; add LiteLLM if Claude preferred |
+| Frontend host | Render Static Site (or Vercel) | Same Vite build as today |
+
+### Endpoint contract
+
+**`POST /api/generate`**
+
+Request body (JSON):
+```json
+{
+  "topic": "string",
+  "categories": ["string"],
+  "pointValues": [100, 200, 300],
+  "difficulty": "easy | medium | hard",
+  "slideContext": "string (optional)"
+}
+```
+Note: `apiKey` is gone — the backend reads all credentials from env vars.
+
+Response (streaming): `Content-Type: text/event-stream`
+```
+data: {"id":"...","category":"History","question":"...","answer":"...","points":100}
+
+data: {"id":"...","category":"History","question":"...","answer":"...","points":200}
+
+data: [DONE]
+```
+Each `data:` event carries one complete, parseable JSON object — cleaner than Anthropic's raw
+`content_block_delta` format. This lets `aiGenerate.ts`'s streaming parser simplify.
+
+Error (quota hit): `HTTP 429 { "error": "Daily token quota exceeded — try again tomorrow" }`
+
+### Environment variables (server-side only)
+
+| Variable | Description | Local default |
+|----------|-------------|---------------|
+| `LLM_BASE_URL` | OpenAI-compatible API base URL | `https://api.deepseek.com` |
+| `LLM_MODEL` | Model name | `deepseek-chat` |
+| `LLM_API_KEY` | API key for the provider | (your DeepSeek key) |
+| `LLM_DAILY_TOKEN_CAP` | Hard limit on total input+output tokens per calendar day | `100000` |
+| `SUPABASE_URL` | Supabase project URL | — |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key (bypasses RLS) | — |
+
+None of these are ever sent to the browser. No `.env` file is committed to the repo.
+
+### Quota enforcement design
+
+1. On each `POST /api/generate` request:
+   - Query `llm_usage` table for today's `SUM(tokens_input + tokens_output)`
+   - If sum ≥ `LLM_DAILY_TOKEN_CAP` → return `429` immediately
+2. After a successful generation call:
+   - Read `usage.input_tokens` + `usage.output_tokens` from the LLM response
+   - `UPSERT` into `llm_usage (date, tokens_input, tokens_output)` (aggregate per day)
+
+`llm_usage` schema:
+```sql
+CREATE TABLE llm_usage (
+  date        DATE PRIMARY KEY,
+  tokens_input  BIGINT NOT NULL DEFAULT 0,
+  tokens_output BIGINT NOT NULL DEFAULT 0
+);
+```
+
+### Frontend changes implied (not yet made)
+
+- `GenerateOptions` drops `apiKey`
+- `aiGenerate.ts`'s two `fetch()` calls point at `/api/generate`; remove `x-api-key` /
+  `anthropic-dangerous-direct-browser-calls` headers; simplify SSE parser to read standard
+  `data: <json>` events (one complete JSON object per event) rather than Anthropic's
+  `content_block_delta` format
+- `AIGenerateModal.tsx` removes the API key field, "save key" checkbox, all
+  `owl_jeopardy.anthropic_key` `localStorage` reads/writes
+- No changes to `AIGenerateModal.tsx`'s review-table logic, `aiCache.ts`, or `slideParser.ts`
+
+### Switching models (the key design goal)
+
+To switch from DeepSeek to a different provider on production, change only `.env`:
+```
+# DeepSeek (local default)
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+LLM_API_KEY=sk-...
+
+# OpenAI
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o-mini
+LLM_API_KEY=sk-...
+
+# Local Ollama (free, no key needed)
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=llama3
+LLM_API_KEY=ollama
+```
+Zero code changes — the Python `openai` SDK picks up the new base URL and key automatically.
+Claude (Anthropic) is not OpenAI-compatible natively; if the team wants Claude specifically,
+add **LiteLLM** as a router layer — one `pip install litellm` and one import change in the backend.
 
 ### Deferred to a later iteration (needs auth first)
-- BYOK (bring-your-own-key) as a fallback/alternative to the system key
-- Per-user quotas tied to identity, and a `llm_usage` logging table
-- The draft/sign-off review queue (`question_drafts` with pending/accepted/rejected state) — the
-  existing review-table-then-Add flow stays as the human-in-the-loop step for this iteration
+- BYOK (bring-your-own-key) as a user-level fallback
+- Per-user quotas tied to identity, and per-user rows in `llm_usage`
+- The draft/sign-off review queue — the existing review-table-then-Add flow stays for this iteration
 
 ---
 

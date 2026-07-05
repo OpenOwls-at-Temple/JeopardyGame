@@ -86,25 +86,63 @@
 
 ## Next Iteration — Proposed (spec'd, not yet built)
 
-> Per Professor Pang's 2026-06-24 guidance: pick gaps vs. the reference repo one at a time, spec each one
-> before coding it, rather than deciding the whole convergence question up front. This is the first
-> one — picked because it's the only item in "Out of Scope" below that's an actual **security risk**
-> rather than a missing convenience feature. Proposed here for the team meeting; not yet implemented.
+> Per Professor Pang's guidance (2026-06-24 and 2026-06-28): pick gaps one at a time, spec before coding.
+> Feature 6 is first because it's the only "Out of Scope" item below that's an active **security risk**.
+> Feature 7 addresses a new requirement (user-level file storage) raised on 2026-06-28.
+> Neither is implemented yet — both are ready for the team meeting.
 
-### Feature 6: Server-Side LLM Proxy
-**As a** teacher,
-**I want to** use AI question generation without ever exposing an API key in my own browser,
-**So that** the feature is safe to use on any classroom computer and doesn't require me to have my own Anthropic account.
+### Feature 6: Server-Side LLM Proxy with Swappable Model and Hard Quota
+
+Per Professor Pang's 2026-06-28 guidance: backend is **FastAPI on Render** with **Supabase Postgres**;
+the LLM layer must use an **OpenAI-compatible interface** so the underlying model is switchable by
+changing one `.env` file (no code change); local/testing uses **DeepSeek** (free); a **hard daily
+token quota** caps spend — the app stops rather than generating a surprise bill.
+
+**As a** teacher using the hosted app,
+**I want to** generate questions without supplying an API key, with the system enforcing a hard cost ceiling,
+**So that** generation works safely on any classroom computer and the project's LLM bill cannot exceed a known maximum.
 
 **Acceptance Criteria:**
-- [ ] Given I open the AI Generate modal, when it loads, then there is no "Anthropic API Key" field — generation works immediately using a system-wide key the team configures once
-- [ ] Given I click Generate, when the request is sent, then it goes to our own backend endpoint (e.g. `POST /api/generate`), never directly to `api.anthropic.com` from the browser
-- [ ] Given the backend receives a request, then it reads `ANTHROPIC_API_KEY` from a server-side environment variable and forwards the call — the key is never present in any browser request, response, or `localStorage`
-- [ ] Given streaming generation, when questions are produced, then the backend relays the SSE/NDJSON stream through to the same review-table UX that exists today — no visible behavior change for the teacher beyond the missing API-key field
-- [ ] Given many generation requests happen in a short window, when a soft cap is reached (proposed: 20 calls/day, matching the reference repo's default), then the teacher sees a clear "generation limit reached, try again tomorrow" message instead of the team's API budget being silently exhausted
-- [ ] Given the backend is unreachable or misconfigured, when generation is attempted, then the existing "Claude API error: ..." error UX in the modal is reused — no new frontend error states needed
+- [ ] No "API Key" field in the AI Generate modal — generation works using a system key configured on the server
+- [ ] All generation requests go to `POST /api/generate` on the FastAPI backend; the browser never calls any LLM provider directly
+- [ ] The FastAPI backend calls the LLM via an **OpenAI-compatible HTTP interface** using the Python `openai` SDK with configurable env vars (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`):
+  - Local / testing default: **DeepSeek** — free via `https://api.deepseek.com` or a local Ollama instance; `LLM_BASE_URL=https://api.deepseek.com`, `LLM_MODEL=deepseek-chat`
+  - Production: any OpenAI-compatible provider (OpenAI GPT-4o, hosted DeepSeek, etc.) — swap by changing `.env` only, zero code changes required; Claude can be added via LiteLLM if the team prefers it
+- [ ] A **hard daily token quota** (`LLM_DAILY_TOKEN_CAP` env var, e.g. 100,000) blocks generation once hit: endpoint returns `429`, generation stops for the rest of the calendar day — the bill cannot grow past a bounded amount
+- [ ] Token usage is tracked in a `llm_usage` Supabase Postgres table (`date`, `tokens_input`, `tokens_output`), updated after every successful call using token counts from the API response
+- [ ] Keys (`LLM_API_KEY`, `SUPABASE_SERVICE_KEY`) exist only in the server's `.env` — never in any browser request, response body, or `localStorage`
+- [ ] Streaming generation works end-to-end: the FastAPI backend accumulates OpenAI-format SSE deltas, assembles complete NDJSON question objects, and re-emits them as SSE `data:` events — the review-table UX is unchanged; only `aiGenerate.ts`'s SSE parsing simplifies (reads our own cleaner format instead of Anthropic's raw `content_block_delta` format)
+- [ ] On quota hit or backend unreachable, the existing "Claude API error: ..." modal error display is reused — no new frontend error states
 
-**Explicitly out of scope for this iteration** (deferred to a later one, since they require auth which is its own larger feature): BYOK (bring-your-own-key) as an alternative to the system key, per-user identity-tied quotas, a usage-logging table. This iteration only removes the client-side key exposure using one shared system key — see `llm-integration.md`'s Migration Plan for the concrete technical design.
+**Frontend changes implied (not yet made):**
+- `GenerateOptions` drops `apiKey`
+- `aiGenerate.ts`'s two `fetch()` calls point at `/api/generate`; drop `x-api-key` / `anthropic-dangerous-direct-browser-calls` headers; simplify SSE parsing to read standard `data: <json>` events
+- `AIGenerateModal.tsx` removes the API key field, "save key" checkbox, and all `owl_jeopardy.anthropic_key` localStorage reads/writes
+- No changes to `AIGenerateModal.tsx`'s review-table logic, `aiCache.ts`, or `slideParser.ts`
+
+**Backend (new — FastAPI on Render):**
+- Single route `POST /api/generate` — validates request, checks daily quota from Supabase, calls LLM, streams NDJSON response, writes token counts back to Supabase
+- See `llm-integration.md` Migration Plan for full endpoint contract and env var table
+
+---
+
+### Feature 7: User-Level File Storage
+
+Per Professor Pang's 2026-06-28 guidance: this application needs user-level file storage.
+Currently slide files (`.pptx`/`.pdf`) are parsed entirely in the browser; extracted text is ephemeral.
+
+**As a** teacher,
+**I want to** upload a slide file that persists across page reloads (within my session),
+**So that** I can regenerate questions from the same deck without re-uploading it each time.
+
+**Acceptance Criteria (pending design confirmation at team meeting):**
+- [ ] Uploaded slide files are sent to `POST /api/upload-slide` and stored in **Supabase Storage** under a session-scoped path (session ID set as a cookie or `localStorage` key; no login required yet)
+- [ ] The backend parses the stored file server-side (`python-pptx` for `.pptx`, `pypdf` for `.pdf`) and returns extracted text — replacing the current browser-side `jszip`/`pdfjs-dist` parsing
+- [ ] Previously uploaded slides for the session are listed in the modal so the teacher can select one without re-uploading
+- [ ] Files older than 7 days are automatically purged (Supabase Storage lifecycle policy or a scheduled FastAPI task)
+- [ ] If auth is added later, the per-session path becomes per-user with no structural change to the storage layout
+
+> **Dependency:** requires Feature 6's FastAPI backend and Supabase Postgres to be in place first.
 
 ---
 

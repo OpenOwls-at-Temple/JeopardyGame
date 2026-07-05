@@ -2,12 +2,10 @@
 
 An AI-powered Jeopardy-style review game for class review sessions.
 
-> **Phase 1 (current):** No LLM. You build question banks by hand and run live
-> games from them. Everything is stored locally in your browser — no server, no
-> Canvas, no Claude API yet.
->
-> Future phases will add LLM-generated questions (Phase 2) and Q&A/flashcards
-> generated from uploaded lecture slides (Phase 3).
+> **This branch (`branch2`):** build question banks by hand, or generate them with Claude from a
+> topic or an uploaded lecture slide deck. Everything is stored locally in your browser — there is
+> still no backend or accounts; see [`ai_specs/overview.md`](ai_specs/overview.md) for the current
+> scope and how it compares to the team's fuller reference design in `owl-jeopardy-pilot`.
 
 ## Features
 

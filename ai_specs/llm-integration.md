@@ -179,9 +179,9 @@ multi-user use.
 
 ## Migration Plan — Server-Side LLM Proxy (spec'd as `features.md` Feature 6)
 
-Per Professor Pang's 2026-06-28 guidance: **FastAPI on Render**, **Supabase Postgres**, **OpenAI-compatible
-LLM abstraction** (model switchable via `.env`, zero code change), **DeepSeek** for local/free testing,
-**hard daily token quota** (app stops rather than generating surprise bills). Updated 2026-07-05.
+Per Professor Pang's guidance (2026-06-28 + confirmed 2026-07-05): **FastAPI on Render**,
+**Supabase Postgres**, **LiteLLM** as the LLM abstraction layer (model switchable via `.env`,
+zero code change), **DeepSeek** for local/free testing, **hard daily token quota**.
 
 ### Stack
 
@@ -189,9 +189,9 @@ LLM abstraction** (model switchable via `.env`, zero code change), **DeepSeek** 
 |-----------|------------|-------|
 | Backend | FastAPI (Python) | Deployed on Render as a Web Service |
 | Database | Supabase Postgres | Managed; used for `llm_usage` quota tracking |
-| LLM client | Python `openai` SDK | Configured with `LLM_BASE_URL` + `LLM_MODEL` + `LLM_API_KEY` — OpenAI-compatible |
-| Local / testing model | DeepSeek | Free via `https://api.deepseek.com` or a local Ollama instance |
-| Production model | Any OpenAI-compatible provider | Swap by changing `.env`, no code change; add LiteLLM if Claude preferred |
+| LLM abstraction | **LiteLLM** (`pip install litellm`) | Unified interface for 100+ providers; confirmed by Professor Pang 2026-07-05 |
+| Local / testing model | DeepSeek (`deepseek/deepseek-chat`) | Free via DeepSeek API or local Ollama |
+| Production model | Any LiteLLM-supported provider | Claude, OpenAI, etc. — swap by changing `LLM_MODEL`, zero code change |
 | Frontend host | Render Static Site (or Vercel) | Same Vite build as today |
 
 ### Endpoint contract
@@ -225,11 +225,14 @@ Error (quota hit): `HTTP 429 { "error": "Daily token quota exceeded — try agai
 
 ### Environment variables (server-side only)
 
+LiteLLM reads provider API keys from standard env var names automatically — no custom wrapper needed.
+
 | Variable | Description | Local default |
 |----------|-------------|---------------|
-| `LLM_BASE_URL` | OpenAI-compatible API base URL | `https://api.deepseek.com` |
-| `LLM_MODEL` | Model name | `deepseek-chat` |
-| `LLM_API_KEY` | API key for the provider | (your DeepSeek key) |
+| `LLM_MODEL` | LiteLLM model string (e.g. `deepseek/deepseek-chat`, `claude-haiku-4-5-20251001`, `gpt-4o-mini`) | `deepseek/deepseek-chat` |
+| `DEEPSEEK_API_KEY` | DeepSeek API key — read by LiteLLM automatically when model is `deepseek/...` | (your DeepSeek key) |
+| `ANTHROPIC_API_KEY` | Anthropic key — read by LiteLLM automatically when model is `claude-...` | — |
+| `OPENAI_API_KEY` | OpenAI key — read by LiteLLM automatically when model is `gpt-...` | — |
 | `LLM_DAILY_TOKEN_CAP` | Hard limit on total input+output tokens per calendar day | `100000` |
 | `SUPABASE_URL` | Supabase project URL | — |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (bypasses RLS) | — |
@@ -267,26 +270,27 @@ CREATE TABLE llm_usage (
 
 ### Switching models (the key design goal)
 
-To switch from DeepSeek to a different provider on production, change only `.env`:
-```
-# DeepSeek (local default)
-LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-chat
-LLM_API_KEY=sk-...
+LiteLLM uses provider-prefixed model strings. To switch providers, change only `LLM_MODEL`
+(and set the matching `*_API_KEY`) in `.env` — zero code changes:
+
+```bash
+# DeepSeek (local default — free)
+LLM_MODEL=deepseek/deepseek-chat
+DEEPSEEK_API_KEY=sk-...
+
+# Claude Haiku (Anthropic)
+LLM_MODEL=claude-haiku-4-5-20251001
+ANTHROPIC_API_KEY=sk-ant-...
 
 # OpenAI
-LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
-LLM_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
 
-# Local Ollama (free, no key needed)
-LLM_BASE_URL=http://localhost:11434/v1
-LLM_MODEL=llama3
-LLM_API_KEY=ollama
+# Local Ollama (free, no key)
+LLM_MODEL=ollama/llama3
 ```
-Zero code changes — the Python `openai` SDK picks up the new base URL and key automatically.
-Claude (Anthropic) is not OpenAI-compatible natively; if the team wants Claude specifically,
-add **LiteLLM** as a router layer — one `pip install litellm` and one import change in the backend.
+
+LiteLLM resolves the provider from the model string prefix and reads the correct key automatically.
 
 ### Deferred to a later iteration (needs auth first)
 - BYOK (bring-your-own-key) as a user-level fallback

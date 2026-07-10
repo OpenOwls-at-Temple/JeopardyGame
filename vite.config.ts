@@ -6,4 +6,10 @@ export default defineConfig({
   plugins: [react()],
   // relative base so the production build also works when opened from disk
   base: './',
+  server: {
+    // proxy /api to the FastAPI backend in development
+    proxy: {
+      '/api': 'http://localhost:8000',
+    },
+  },
 })

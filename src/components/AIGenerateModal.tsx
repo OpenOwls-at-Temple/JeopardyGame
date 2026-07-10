@@ -5,7 +5,6 @@ import { parseSlideFile, fileNameToTopic, type ParseResult } from '../lib/slideP
 import { buildCacheKey, cacheGet, cachePut } from '../lib/aiCache'
 import type { Question } from '../types'
 
-const API_KEY_STORAGE = 'owl_jeopardy.anthropic_key'
 const DEFAULT_POINTS = [100, 200, 300, 400, 500]
 
 interface Props {
@@ -15,8 +14,6 @@ interface Props {
 }
 
 export default function AIGenerateModal({ existingCategories, onAdd, onClose }: Props) {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE) ?? '')
-  const [saveKey, setSaveKey] = useState(!!localStorage.getItem(API_KEY_STORAGE))
   const [topic, setTopic] = useState('')
   const [categoriesRaw, setCategoriesRaw] = useState(existingCategories.slice(0, 5).join(', '))
   const [pointsRaw, setPointsRaw] = useState(DEFAULT_POINTS.join(', '))
@@ -71,10 +68,6 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
     if (!topic.trim()) { setError('Please enter a topic.'); return }
     if (categories.length === 0) { setError('Please enter at least one category.'); return }
     if (pointValues.length === 0) { setError('Please enter at least one point value.'); return }
-    if (!apiKey.trim()) { setError('Please enter your Anthropic API key.'); return }
-
-    if (saveKey) localStorage.setItem(API_KEY_STORAGE, apiKey.trim())
-    else localStorage.removeItem(API_KEY_STORAGE)
 
     setError(null)
     setFromCache(false)
@@ -102,7 +95,7 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
 
     try {
       await generateQuestionsStream(
-        { topic, categories, pointValues, apiKey: apiKey.trim(), difficulty, slideContext: slideResult?.text },
+        { topic, categories, pointValues, difficulty, slideContext: slideResult?.text },
         (q) => {
           accumulated.push(q)
           setPreview((prev) => [...(prev ?? []), q])
@@ -157,24 +150,6 @@ export default function AIGenerateModal({ existingCategories, onAdd, onClose }: 
       {preview === null ? (
         /* ── Input screen ── */
         <>
-          <div className="field">
-            <label>Anthropic API Key</label>
-            <input
-              type="password"
-              value={apiKey}
-              placeholder="sk-ant-..."
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={saveKey}
-                onChange={(e) => setSaveKey(e.target.checked)}
-              />
-              Save key in browser (localStorage)
-            </label>
-          </div>
-
           <div className="field">
             <label>Upload Slides <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional — .pptx or .pdf)</span></label>
             <input

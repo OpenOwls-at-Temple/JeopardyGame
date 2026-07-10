@@ -46,13 +46,12 @@ in to the project this week (Discord 2026-07-04).
 
 ## In Progress
 
-- [ ] **Feature 6 — Server-Side LLM Proxy** spec updated (2026-07-05) with Professor Pang's
-  2026-06-28 architectural guidance: FastAPI on Render, Supabase Postgres, OpenAI-compatible LLM
-  abstraction (model switchable via `.env`), DeepSeek for local/testing, hard daily token quota.
-  Not yet implemented — waiting for team meeting (Mon/Tue per Discord).
-- [ ] **Feature 7 — User-Level File Storage** spec'd for the first time (2026-07-05) per Professor
-  Pang's 2026-06-28 requirement: Supabase Storage for slide uploads, session-scoped. Depends on
-  Feature 6's FastAPI backend. Not yet implemented.
+- [x] **Feature 6 — Server-Side LLM Proxy** — implemented locally (2026-07-08).
+  `backend/` FastAPI app with LiteLLM (confirmed by Professor Pang 2026-07-05). Frontend API key
+  field removed; all generation goes through `POST /api/generate`; model switchable via `.env`.
+  Hard daily token quota wired in. **Still needs:** Supabase project + migration run, deploy to Render.
+- [ ] **Feature 7 — User-Level File Storage** spec'd (2026-07-05). Depends on Feature 6 backend.
+  Not yet implemented.
 
 ---
 
@@ -80,6 +79,7 @@ in to the project this week (Discord 2026-07-04).
 
 | Date | What Was Done |
 |------|---------------|
+| 2026-07-08 | Implemented Feature 6: `backend/` FastAPI app with LiteLLM abstraction layer (per Professor Pang's 2026-07-05 confirmation). Model switchable via `LLM_MODEL` env var (DeepSeek, Claude, OpenAI, Ollama — zero code change). Hard daily token quota (`LLM_DAILY_TOKEN_CAP`). Frontend: removed API key field + save-key checkbox from `AIGenerateModal.tsx`; `aiGenerate.ts` now calls `/api/generate` with simplified SSE parser. Vite proxy added for local dev. `npm run build` clean. Supabase `llm_usage` migration SQL in `backend/migrations/`. Still needs: Supabase project created + migration run, deploy to Render. |
 | 2026-07-05 | Updated specs to incorporate Professor Pang's 2026-06-28 architectural guidance: Feature 6 spec rewritten (FastAPI on Render, Supabase Postgres, OpenAI-compatible LLM abstraction with DeepSeek for local/free testing, hard daily token quota, model switchable via `.env`); Feature 7 spec'd for the first time (user-level file storage via Supabase Storage); `architecture-planning.md` updated with planned full-stack diagram; `deployment.md` fully rewritten with Render+Supabase target and local DeepSeek setup. Merged `branch2` → `main` per Professor Pang's request. |
 | 2026-06-24 | Professor Pang's feedback on the convergence question: don't decide the whole scope question up front — pick gaps vs. `owl-jeopardy-pilot` one at a time, spec each before coding it ("Take a look on what have been built, think about the new features, update the specs, then generate the code"). Picked Feature 6 (server-side LLM proxy) as the first one — it's the only "Out of Scope" item that's an actual security risk rather than a missing convenience. Fully spec'd it: `features.md` (acceptance criteria), `llm-integration.md` (concrete endpoint contract, env vars, soft-quota design, exact frontend diff scope), `architecture-planning.md`, `deployment.md` (env vars). No backend code written yet — spec is ready for the team meeting Professor Pang offered. |
 | 2026-06-24 | Updated `ai_specs/overview.md`'s stakeholder table to use the teammate's actual name (Zirong) instead of a generic placeholder. |

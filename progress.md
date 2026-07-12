@@ -52,6 +52,13 @@ in to the project this week (Discord 2026-07-04).
   Hard daily token quota wired in. **Still needs:** Supabase project + migration run, deploy to Render.
 - [ ] **Feature 7 — User-Level File Storage** spec'd (2026-07-05). Depends on Feature 6 backend.
   Not yet implemented.
+- [ ] **Feature 8 — Google Login** — frontend code complete (2026-07-13, `feature/auth-google`).
+  Supabase Auth + Google OAuth via `signInWithOAuth`. Files: `src/lib/supabase.ts`,
+  `src/context/AuthContext.tsx`, `src/pages/LoginPage.tsx`. `App.tsx` wrapped with `AuthProvider`;
+  `RequireAuth` guard on all routes; user avatar + sign-out in `Layout.tsx`. `vite-env.d.ts` added.
+  **Blocked:** Google OAuth client created but code exchange failing — likely Google propagation delay
+  (client created <30 min before first test). Supabase Google provider configured with correct
+  Client ID + Secret + callback URL. Retry after ~2 hours.
 
 ---
 
@@ -79,6 +86,7 @@ in to the project this week (Discord 2026-07-04).
 
 | Date | What Was Done |
 |------|---------------|
+| 2026-07-13 | Feature 8 frontend code complete (`feature/auth-google`). Installed `@supabase/supabase-js`. Created `src/lib/supabase.ts`, `src/context/AuthContext.tsx` (INITIAL_SESSION + SIGNED_IN gate), `src/pages/LoginPage.tsx` (redirects to `/` if already signed in). Updated `App.tsx` (AuthProvider + RequireAuth guard), `Layout.tsx` (avatar + sign-out button), `.env.development` (VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY), added missing `src/vite-env.d.ts`. `npm run build` clean. Also switched LLM backend from Gemini (quota issues) to Groq (`llama-3.3-70b-versatile`, free tier). Added UX hint in AIGenerateModal showing total question count. Google OAuth code exchange failing — awaiting Google propagation delay resolution. |
 | 2026-07-08 | Implemented Feature 6: `backend/` FastAPI app with LiteLLM abstraction layer (per Professor Pang's 2026-07-05 confirmation). Model switchable via `LLM_MODEL` env var (DeepSeek, Claude, OpenAI, Ollama — zero code change). Hard daily token quota (`LLM_DAILY_TOKEN_CAP`). Frontend: removed API key field + save-key checkbox from `AIGenerateModal.tsx`; `aiGenerate.ts` now calls `/api/generate` with simplified SSE parser. Vite proxy added for local dev. `npm run build` clean. Supabase `llm_usage` migration SQL in `backend/migrations/`. Still needs: Supabase project created + migration run, deploy to Render. |
 | 2026-07-05 | Updated specs to incorporate Professor Pang's 2026-06-28 architectural guidance: Feature 6 spec rewritten (FastAPI on Render, Supabase Postgres, OpenAI-compatible LLM abstraction with DeepSeek for local/free testing, hard daily token quota, model switchable via `.env`); Feature 7 spec'd for the first time (user-level file storage via Supabase Storage); `architecture-planning.md` updated with planned full-stack diagram; `deployment.md` fully rewritten with Render+Supabase target and local DeepSeek setup. Merged `branch2` → `main` per Professor Pang's request. |
 | 2026-06-24 | Professor Pang's feedback on the convergence question: don't decide the whole scope question up front — pick gaps vs. `owl-jeopardy-pilot` one at a time, spec each before coding it ("Take a look on what have been built, think about the new features, update the specs, then generate the code"). Picked Feature 6 (server-side LLM proxy) as the first one — it's the only "Out of Scope" item that's an actual security risk rather than a missing convenience. Fully spec'd it: `features.md` (acceptance criteria), `llm-integration.md` (concrete endpoint contract, env vars, soft-quota design, exact frontend diff scope), `architecture-planning.md`, `deployment.md` (env vars). No backend code written yet — spec is ready for the team meeting Professor Pang offered. |

@@ -146,9 +146,43 @@ Currently slide files (`.pptx`/`.pdf`) are parsed entirely in the browser; extra
 
 ---
 
+### Feature 8: Google Login via Supabase Auth
+
+Per Professor Pang's guidance (2026-07-11): team has freedom to implement auth. Google OAuth via
+Supabase Auth is chosen over Microsoft Entra ID because the project's Supabase project is already
+in place and Google login requires no institutional agreement.
+
+**As a** teacher,
+**I want to** sign in with my Google account,
+**So that** my question banks and games are private to me and not shared with others using the same browser.
+
+**Acceptance Criteria:**
+- [ ] Unauthenticated users are redirected to a `/login` page; all other routes require a valid session
+- [ ] Login page has a single "Sign in with Google" button using Supabase Auth (`signInWithOAuth`)
+- [ ] After login, the user is redirected back to the app; their name/avatar is shown in the header
+- [ ] A "Sign out" button ends the session and redirects to `/login`
+- [ ] Auth state is managed via a React `AuthContext` wrapping the entire app; components access `useAuth()` hook
+- [ ] Question bank and game data remains in `localStorage` for now — scoping data per user is deferred to a future feature
+- [ ] Supabase URL and anon key are stored in `.env.development` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; they are safe to expose in the browser (anon key only)
+- [ ] No backend changes required for this feature — JWT verification on `/api/generate` is deferred
+
+**Frontend changes:**
+- Install `@supabase/supabase-js`
+- `src/lib/supabase.ts` — Supabase client singleton
+- `src/context/AuthContext.tsx` — provides `user`, `signIn`, `signOut`; listens to `onAuthStateChange`
+- `src/pages/LoginPage.tsx` — Google sign-in button
+- `src/App.tsx` — wrap with `AuthProvider`; add `/login` route; redirect unauthenticated users
+- `src/components/Header.tsx` (or equivalent) — show user avatar + sign-out button
+
+**Supabase setup required (one-time, outside codebase):**
+- Authentication → Providers → Google → enable, add Client ID + Secret from Google Cloud Console
+- Authentication → URL Configuration → add `http://localhost:5173` to allowed redirect URLs
+
+---
+
 ## Out of Scope (present in `owl-jeopardy-pilot`'s Phase 1, not built here)
 
-- **Authentication / SSO** — no Microsoft Entra ID, no login at all; the app is single-user-per-browser
+- **Microsoft Entra ID / institutional SSO** — replaced by Google OAuth in Feature 8
 - **Admin user management** — no admin role, no allowlist
 - **Sharing & cloning** — banks/games cannot be shared between users or accounts
 - **CSV / JSON bulk import or export** — questions can only be entered one at a time, or generated
